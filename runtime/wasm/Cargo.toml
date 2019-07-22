@@ -1,0 +1,21 @@
+[package]
+authors = ['Parity Technologies <admin@parity.io>']
+edition = '2018'
+name = 'processcalc2-runtime-wasm'
+version = '1.0.0'
+
+[lib]
+crate-type = ['cdylib']
+[dependencies.processcalc2-runtime]
+default-features = false
+path = '..'
+
+[features]
+default = []
+std = ['processcalc2-runtime/std']
+[profile.release]
+lto = true
+panic = 'abort'
+
+[workspace]
+members = []
