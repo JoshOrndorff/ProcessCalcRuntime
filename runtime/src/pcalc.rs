@@ -4,7 +4,18 @@
 /// P ::= Send
 ///     | Recv
 
-use support::{decl_module, decl_storage, decl_event, StorageValue, dispatch::Result};
+
+// TODO items
+// [check] Dispatchable call to create a comm reduction
+// [check] Event for reductions
+// Give each send or receive a unique ID
+// Add the Nil Process
+// Comms specify _which_ terms are being reduced
+// Terms have continuations
+// Terms are parametric in a channel (commed terms must be over same channel)
+// Channels can be public or unforgeable
+
+use support::{decl_module, decl_storage, decl_event, StorageValue, dispatch::Result, ensure};
 use system::ensure_signed;
 use parity_codec::{ Encode, Decode };
 
@@ -15,6 +26,17 @@ pub enum Proc {
     Send,
     Receive,
 }
+
+//TODO why did we need a default here?
+//TODO Make Nil the default if we do indeed need a default
+impl Default for Proc {
+    fn default() -> Self {
+        Self:: Send
+    }
+}
+
+//TODO add this to the configuration trait
+type ProcId = u32;
 
 /// The module's configuration trait.
 pub trait Trait: system::Trait {
@@ -28,10 +50,10 @@ pub trait Trait: system::Trait {
 decl_storage! {
 	trait Store for Module<T: Trait> as TemplateModule {
 		// How many sends are stored in the tuplespace
-        Sends get(num_sends): u32;
+        Sends get(sends): map ProcId => Proc;
 
         // How many receives are stored in the tuplespace
-        Receives get(num_receives): u32;
+        Receives get(receives): map ProcId => Proc;
 	}
 }
 
@@ -43,30 +65,51 @@ decl_module! {
 		fn deposit_event<T>() = default;
 
 		// Deploy a term into the tuplespace
-		pub fn deploy(origin, term: Proc) -> Result {
+        //TODO eventually we should choose IDs pseudorandomly not take them
+        // from the user
+		pub fn deploy(origin, id: ProcId, term: Proc) -> Result {
 			// TODO: You only need this if you want to check it was signed.
 			let deployer = ensure_signed(origin)?;
 
 			match term {
                 Proc::Send => {
                     // Add the term to the storage
-                    //TODO check for overflow and emit an error
-                    // Gav wrote in riot
-                    // .saturated_into or .checked_into; there are traits in srml_primitives to help you move between numeric types.
-                    <Sends<T>>::mutate(|n| *n += 1);
+                    <Sends<T>>::insert(id, term);
 
                     //Emit and event
-                    Self::deposit_event(RawEvent::Deployed(deployer, Proc::Send));
+                    Self::deposit_event(RawEvent::Deployed(deployer, id, Proc::Send));
                 }
 
                 Proc::Receive => {
-                    <Receives<T>>::mutate(|n| *n += 1);
-                    Self::deposit_event(RawEvent::Deployed(deployer, Proc::Receive));
+                    <Receives<T>>::insert(id, term);
+                    Self::deposit_event(RawEvent::Deployed(deployer, id, Proc::Receive));
                 }
             }
 
 			Ok(())
 		}
+
+        pub fn comm(origin, send: ProcId, receive: ProcId) -> Result {
+            // Ensure the transaction was signed. (Might not be necessary)
+            let _ = ensure_signed(origin)?;
+
+            // Ensure that the specified send exists
+            ensure!(<Sends<T>>::exists(send), "No such send in the tuplespace to be commed");
+
+            // Ensure there is at least one receive
+            ensure!(<Receives<T>>::existsreceive(), "No such receive in the tuplespace to be commed");
+
+            // Consume both
+            <Sends<T>>::remove(send);
+            <Receives<T>>::remove(receive);
+
+            // TODO re-deploy the continuation
+
+            // Emit the event
+            Self::deposit_event(RawEvent::Comm(send, receive));
+
+            Ok(())
+        }
 	}
 }
 
@@ -75,7 +118,10 @@ decl_event!(
         //TODO I don't really care who deployed this, but I couldn't
         // make the typechecker happy when I didn't use AccountId
 		// Event fires when any term is deployed to the tuplespace
-		Deployed(AccountId, Proc),
+		Deployed(AccountId, ProcId, Proc),
+
+        // Send then Receive
+        Comm(ProcId, ProcId),
 	}
 );
 
