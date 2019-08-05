@@ -9,7 +9,7 @@ use system::ensure_signed;
 use parity_codec::{ Encode, Decode };
 
 /// All the types of processes in our calculus
-#[derive(PartialEq, Eq, Clone, Encode, Decode)]
+#[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
 pub enum Proc {
     //TODO make them parametric in a channel
     Send,
