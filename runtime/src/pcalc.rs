@@ -51,6 +51,8 @@ decl_module! {
                 Proc::Send => {
                     // Add the term to the storage
                     //TODO check for overflow and emit an error
+                    // Gav wrote in riot
+                    // .saturated_into or .checked_into; there are traits in srml_primitives to help you move between numeric types.
                     <Sends<T>>::mutate(|n| *n += 1);
 
                     //Emit and event

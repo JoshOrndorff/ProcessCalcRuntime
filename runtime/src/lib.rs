@@ -1,4 +1,5 @@
-//! The Substrate Node Template runtime. This can be compiled with `#[no_std]`, ready for Wasm.
+//! Based on the Substrate Node Template runtime.
+//! This can be compiled with `#[no_std]`, ready for Wasm.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(not(feature = "std"), feature(alloc))]
@@ -186,7 +187,6 @@ impl sudo::Trait for Runtime {
 	type Proposal = Call;
 }
 
-/// Used for the module template in `./template.rs`
 impl pcalc::Trait for Runtime {
 	type Event = Event;
 }
@@ -204,7 +204,6 @@ construct_runtime!(
 		Indices: indices,
 		Balances: balances,
 		Sudo: sudo,
-		// Used for the module template in `./template.rs`
 		ProcessCalc: pcalc::{Module, Call, Storage, Event<T>},
 	}
 );
