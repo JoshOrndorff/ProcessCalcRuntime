@@ -14,9 +14,9 @@ fn run() -> cli::error::Result<()> {
 		name: "Substrate Node",
 		commit: env!("VERGEN_SHA_SHORT"),
 		version: env!("CARGO_PKG_VERSION"),
-		executable_name: "processcalc2",
+		executable_name: "pcalc",
 		author: "CoLab",
-		description: "processcalc2",
+		description: "pcalc",
 		support_url: "support.anonymous.an",
 	};
 	cli::run(::std::env::args(), cli::Exit, version)

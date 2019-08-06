@@ -33,7 +33,7 @@ git = 'https://github.com/paritytech/substrate.git'
 package = 'substrate-network'
 rev = '2e30b7321df0cc4dba525cfcf18df8438e12b830'
 
-[dependencies.processcalc2-runtime]
+[dependencies.pcalc-runtime]
 path = 'runtime'
 
 [dependencies.primitives]
@@ -70,7 +70,7 @@ rev = '2e30b7321df0cc4dba525cfcf18df8438e12b830'
 authors = ['Parity Technologies <admin@parity.io>']
 build = 'build.rs'
 edition = '2018'
-name = 'processcalc2'
+name = 'pcalc'
 version = '1.0.0'
 
 [build-dependencies]
@@ -79,5 +79,5 @@ vergen = '3'
 panic = 'unwind'
 
 [[bin]]
-name = 'processcalc2'
+name = 'pcalc'
 path = 'src/main.rs'

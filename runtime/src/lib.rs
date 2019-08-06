@@ -92,8 +92,8 @@ pub mod opaque {
 
 /// This runtime version.
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("processcalc2"),
-	impl_name: create_runtime_str!("processcalc2"),
+	spec_name: create_runtime_str!("pcalc"),
+	impl_name: create_runtime_str!("pcalc"),
 	authoring_version: 3,
 	spec_version: 4,
 	impl_version: 4,

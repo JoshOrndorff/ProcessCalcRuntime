@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use log::info;
 use transaction_pool::{self, txpool::{Pool as TransactionPool}};
-use processcalc2_runtime::{self, GenesisConfig, opaque::Block, RuntimeApi};
+use pcalc_runtime::{self, GenesisConfig, opaque::Block, RuntimeApi};
 use substrate_service::{
 	FactoryFullConfiguration, LightComponents, FullComponents, FullBackend,
 	FullClient, LightClient, LightBackend, FullExecutor, LightExecutor,
@@ -24,9 +24,9 @@ pub use substrate_executor::NativeExecutor;
 // Our native executor instance.
 native_executor_instance!(
 	pub Executor,
-	processcalc2_runtime::api::dispatch,
-	processcalc2_runtime::native_version,
-	include_bytes!("../runtime/wasm/target/wasm32-unknown-unknown/release/processcalc2_runtime_wasm.compact.wasm")
+	pcalc_runtime::api::dispatch,
+	pcalc_runtime::native_version,
+	include_bytes!("../runtime/wasm/target/wasm32-unknown-unknown/release/pcalc_runtime_wasm.compact.wasm")
 );
 
 #[derive(Default)]

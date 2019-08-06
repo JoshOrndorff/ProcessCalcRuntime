@@ -1,18 +1,18 @@
 [package]
 authors = ['Parity Technologies <admin@parity.io>']
 edition = '2018'
-name = 'processcalc2-runtime-wasm'
+name = 'pcalc-runtime-wasm'
 version = '1.0.0'
 
 [lib]
 crate-type = ['cdylib']
-[dependencies.processcalc2-runtime]
+[dependencies.pcalc-runtime]
 default-features = false
 path = '..'
 
 [features]
 default = []
-std = ['processcalc2-runtime/std']
+std = ['pcalc-runtime/std']
 [profile.release]
 lto = true
 panic = 'abort'
