@@ -122,6 +122,7 @@ decl_event!(
 	}
 );
 
+// cargo test -p pcalc-runtime
 /// tests for this module
 #[cfg(test)]
 mod tests {
@@ -129,7 +130,7 @@ mod tests {
 
 	use runtime_io::with_externalities;
 	use primitives::{H256, Blake2Hasher};
-	use support::{impl_outer_origin, assert_ok};
+	use support::{impl_outer_origin, assert_ok, assert_noop};
 	use runtime_primitives::{
 		BuildStorage,
 		traits::{BlakeTwo256, IdentityLookup},
@@ -172,10 +173,80 @@ mod tests {
 	#[test]
 	fn deploying_a_send_works() {
 		with_externalities(&mut new_test_ext(), || {
-			// Deploy a single send
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), Proc::Send));
-			// Asserting that the send count increased
-			assert_eq!(ProcessCalc::num_sends(), 1);
+			// Deploy a single send by user 1 with id 1 over channel 1
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+			// Assert that the send is in the tuplespace
+			assert_eq!(<Sends<Test>>::get(1), Proc::Send(1));
 		});
 	}
+
+    #[test]
+    fn deploying_a_receive_works() {
+        with_externalities(&mut new_test_ext(), || {
+            // Deploy a single receive by user 1 with id 1 over channel 1
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Receive(1)));
+            // Assert that the send is in the tuplespace
+            assert_eq!(<Receives<Test>>::get(1), Proc::Receive(1));
+        });
+    }
+
+    #[test]
+    fn comm_over_same_channel_works() {
+        with_externalities(&mut new_test_ext(), || {
+            // Deploy send (id 1) and receive (id 2)
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(1)));
+
+            // Run the comm event
+            assert_ok!(ProcessCalc::comm(Origin::signed(1), 1, 2));
+
+            // Assert both were consumed
+            assert!(!<Sends<Test>>::exists(1));
+            assert!(!<Receives<Test>>::exists(2));
+        });
+    }
+
+    #[test]
+    fn comm_over_different_channels_fails() {
+        with_externalities(&mut new_test_ext(), || {
+            // Deploy send (chan 1) and receive (chan 2)
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2)));
+
+            // Assert that the comm event fails
+            assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "Send and receive must be on same channel");
+
+            // Assert neither were consumed
+            assert!(<Sends<Test>>::exists(1));
+            assert!(<Receives<Test>>::exists(2));
+        });
+    }
+
+    #[test]
+    fn comm_with_missing_receive_fails() {
+        with_externalities(&mut new_test_ext(), || {
+            // Deploy send (id 1) but no receive
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+
+            // Assert that the comm event fails
+            assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such receive in the tuplespace to be commed");
+
+            // Assert send not consumed
+            assert!(<Sends<Test>>::exists(1));
+        });
+    }
+
+    #[test]
+    fn comm_with_missing_send_fails() {
+        with_externalities(&mut new_test_ext(), || {
+            // Deploy receive (id 2) but no send
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2)));
+
+            // Assert that the comm event fails
+            assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such send in the tuplespace to be commed");
+
+            // Assert receive not consumed
+            assert!(<Receives<Test>>::exists(2));
+        });
+    }
 }
