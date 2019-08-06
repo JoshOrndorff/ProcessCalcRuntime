@@ -18,9 +18,10 @@ use parity_codec::{ Encode, Decode };
 /// All the types of processes in our calculus
 #[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
 pub enum Proc {
-    //TODO make send and receive parametric in a channel
-    Send,
-    Receive,
+    //TODO I can't figure out how to tell PolkadotJS about this enum
+    // now that some variants are parametric
+    Send(Channel),
+    Receive(Channel),
     Nil,
 }
 
@@ -32,8 +33,9 @@ impl Default for Proc {
     }
 }
 
-//TODO add this to the configuration trait
+//TODO add these to the configuration trait
 type ProcId = u32;
+type Channel = u32;
 
 /// The module's configuration trait.
 pub trait Trait: system::Trait {
@@ -69,8 +71,8 @@ decl_module! {
 			let deployer = ensure_signed(origin)?;
 
 			match term {
-                Proc::Send => <Sends<T>>::insert(id, &term),
-                Proc::Receive => <Receives<T>>::insert(id, &term),
+                Proc::Send(_) => <Sends<T>>::insert(id, &term),
+                Proc::Receive(_) => <Receives<T>>::insert(id, &term),
                 Proc::Nil => (),
             }
 
@@ -83,11 +85,16 @@ decl_module! {
             // Ensure the transaction was signed. (Might not be necessary)
             let _ = ensure_signed(origin)?;
 
-            // Ensure that the specified send exists
+            // Ensure the specified send exists
             ensure!(<Sends<T>>::exists(send), "No such send in the tuplespace to be commed");
 
-            // Ensure there is at least one receive
+            // Ensure the specified receive exists
             ensure!(<Receives<T>>::exists(receive), "No such receive in the tuplespace to be commed");
+
+            // Ensure they are on the same channel
+            if let (Proc::Send(send_chan), Proc::Receive(receive_chan)) = (<Sends<T>>::get(send), <Receives<T>>::get(receive)) {
+                ensure!(send_chan == receive_chan, "Send and receive must be on same channel");
+            }
 
             // Consume both
             <Sends<T>>::remove(send);
