@@ -6,13 +6,9 @@
 
 
 // TODO items
-// [check] Dispatchable call to create a comm reduction
-// [check] Event for reductions
-// Give each send or receive a unique ID
-// Add the Nil Process
-// Comms specify _which_ terms are being reduced
-// Terms have continuations
 // Terms are parametric in a channel (commed terms must be over same channel)
+// Terms have continuations
+// Support Pars
 // Channels can be public or unforgeable
 
 use support::{decl_module, decl_storage, decl_event, StorageMap, dispatch::Result, ensure};
@@ -22,16 +18,17 @@ use parity_codec::{ Encode, Decode };
 /// All the types of processes in our calculus
 #[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
 pub enum Proc {
-    //TODO make them parametric in a channel
+    //TODO make send and receive parametric in a channel
     Send,
     Receive,
+    Nil,
 }
 
-//TODO why did we need a default here?
-//TODO Make Nil the default if we do indeed need a default
+// Need a default process because the sends and receives maps need
+// to return a value when queried at non existant ids
 impl Default for Proc {
     fn default() -> Self {
-        Proc::Send
+        Proc::Nil
     }
 }
 
@@ -72,19 +69,12 @@ decl_module! {
 			let deployer = ensure_signed(origin)?;
 
 			match term {
-                Proc::Send => {
-                    // Add the term to the storage
-                    <Sends<T>>::insert(id, term);
-
-                    //Emit and event
-                    Self::deposit_event(RawEvent::Deployed(deployer, id, Proc::Send));
-                }
-
-                Proc::Receive => {
-                    <Receives<T>>::insert(id, term);
-                    Self::deposit_event(RawEvent::Deployed(deployer, id, Proc::Receive));
-                }
+                Proc::Send => <Sends<T>>::insert(id, &term),
+                Proc::Receive => <Receives<T>>::insert(id, &term),
+                Proc::Nil => (),
             }
+
+            Self::deposit_event(RawEvent::Deployed(deployer, id, term));
 
 			Ok(())
 		}
