@@ -15,7 +15,7 @@
 // Terms are parametric in a channel (commed terms must be over same channel)
 // Channels can be public or unforgeable
 
-use support::{decl_module, decl_storage, decl_event, StorageValue, dispatch::Result, ensure};
+use support::{decl_module, decl_storage, decl_event, StorageMap, dispatch::Result, ensure};
 use system::ensure_signed;
 use parity_codec::{ Encode, Decode };
 
@@ -31,7 +31,7 @@ pub enum Proc {
 //TODO Make Nil the default if we do indeed need a default
 impl Default for Proc {
     fn default() -> Self {
-        Self:: Send
+        Proc::Send
     }
 }
 
@@ -46,7 +46,7 @@ pub trait Trait: system::Trait {
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 }
 
-/// The tuplespace
+// The tuplespace
 decl_storage! {
 	trait Store for Module<T: Trait> as TemplateModule {
 		// How many sends are stored in the tuplespace
@@ -97,7 +97,7 @@ decl_module! {
             ensure!(<Sends<T>>::exists(send), "No such send in the tuplespace to be commed");
 
             // Ensure there is at least one receive
-            ensure!(<Receives<T>>::existsreceive(), "No such receive in the tuplespace to be commed");
+            ensure!(<Receives<T>>::exists(receive), "No such receive in the tuplespace to be commed");
 
             // Consume both
             <Sends<T>>::remove(send);
