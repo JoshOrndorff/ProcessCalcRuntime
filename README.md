@@ -2,6 +2,8 @@
 
 A substrate runtime module for pi-calc-based smart contracts.
 
+This modules [design principles and motivation](DesignAndMotivation.md) are also available.
+
 This repository includes the runtime module itself in `runtime/src/pcalc.rs` as well as a basic node-template-based blockchain client that uses it.
 
 # Building
