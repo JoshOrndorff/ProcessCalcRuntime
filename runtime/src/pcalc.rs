@@ -13,6 +13,7 @@
 
 use support::{decl_module, decl_storage, decl_event, StorageMap, dispatch::Result, ensure};
 use system::ensure_signed;
+use rstd::boxed::Box;
 use parity_codec::{ Encode, Decode };
 
 /// All the types of processes in our calculus
@@ -21,7 +22,7 @@ pub enum Proc {
     //TODO I can't figure out how to tell PolkadotJS about this enum
     // now that some variants are parametric
     Send(Channel),
-    Receive(Channel),
+    Receive(Channel, Box<Proc>),
     Nil,
 }
 
@@ -72,7 +73,7 @@ decl_module! {
 
 			match term {
                 Proc::Send(_) => <Sends<T>>::insert(id, &term),
-                Proc::Receive(_) => <Receives<T>>::insert(id, &term),
+                Proc::Receive(_, _) => <Receives<T>>::insert(id, &term),
                 Proc::Nil => (),
             }
 
@@ -92,7 +93,7 @@ decl_module! {
             ensure!(<Receives<T>>::exists(receive), "No such receive in the tuplespace to be commed");
 
             // Ensure they are on the same channel
-            if let (Proc::Send(send_chan), Proc::Receive(receive_chan)) = (<Sends<T>>::get(send), <Receives<T>>::get(receive)) {
+            if let (Proc::Send(send_chan), Proc::Receive(receive_chan, _)) = (<Sends<T>>::get(send), <Receives<T>>::get(receive)) {
                 ensure!(send_chan == receive_chan, "Send and receive must be on same channel");
             }
 
@@ -184,9 +185,9 @@ mod tests {
     fn deploying_a_receive_works() {
         with_externalities(&mut new_test_ext(), || {
             // Deploy a single receive by user 1 with id 1 over channel 1
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Receive(1)));
-            // Assert that the send is in the tuplespace
-            assert_eq!(<Receives<Test>>::get(1), Proc::Receive(1));
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Receive(1, Box::new(Proc::Nil))));
+            // Assert that the receive is in the tuplespace
+            assert_eq!(<Receives<Test>>::get(1), Proc::Receive(1, Box::new(Proc::Nil)));
         });
     }
 
@@ -195,7 +196,7 @@ mod tests {
         with_externalities(&mut new_test_ext(), || {
             // Deploy send (id 1) and receive (id 2)
             assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(1)));
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(1, Box::new(Proc::Nil))));
 
             // Run the comm event
             assert_ok!(ProcessCalc::comm(Origin::signed(1), 1, 2));
@@ -211,7 +212,7 @@ mod tests {
         with_externalities(&mut new_test_ext(), || {
             // Deploy send (chan 1) and receive (chan 2)
             assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2)));
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
 
             // Assert that the comm event fails
             assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "Send and receive must be on same channel");
@@ -240,7 +241,7 @@ mod tests {
     fn comm_with_missing_send_fails() {
         with_externalities(&mut new_test_ext(), || {
             // Deploy receive (id 2) but no send
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2)));
+            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
 
             // Assert that the comm event fails
             assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such send in the tuplespace to be commed");
