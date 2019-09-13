@@ -1,15 +1,5 @@
-/// A runtime module that interprets a very simple process calculus
-///
-/// Grammar
-/// P ::= Send
-///     | Recv
+/// A runtime module that interprets a sipmlified pi calculus
 
-
-// TODO items
-// Terms are parametric in a channel (commed terms must be over same channel)
-// Terms have continuations
-// Support Pars
-// Channels can be public or unforgeable
 
 use support::{decl_module, decl_storage, decl_event, StorageMap, dispatch::Result, ensure};
 use system::ensure_signed;
@@ -19,8 +9,7 @@ use parity_codec::{ Encode, Decode };
 /// All the types of processes in our calculus
 #[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
 pub enum Proc {
-    //TODO I can't figure out how to tell PolkadotJS about this enum
-    // now that some variants are parametric
+    //TODO I can't figure out how to tell PolkadotJS about this type
     Send(Channel),
     Receive(Channel, Box<Proc>),
     Nil,
