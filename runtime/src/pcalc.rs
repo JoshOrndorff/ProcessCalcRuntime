@@ -4,7 +4,7 @@
 use support::{decl_module, decl_storage, decl_event, StorageMap, dispatch::Result, ensure};
 use system::ensure_signed;
 use rstd::boxed::Box;
-use parity_codec::{ Encode, Decode };
+use codec::{ Encode, Decode };
 
 /// All the types of processes in our calculus
 #[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
@@ -37,7 +37,7 @@ pub trait Trait: system::Trait {
 
 // The tuplespace
 decl_storage! {
-	trait Store for Module<T: Trait> as TemplateModule {
+	trait Store for Module<T: Trait> as PCalc {
 		// How many sends are stored in the tuplespace
         Sends get(sends): map ProcId => Proc;
 
@@ -51,7 +51,7 @@ decl_module! {
 	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
 		// Initializing events
 		// this is needed only if you are using events in your module
-		fn deposit_event<T>() = default;
+		fn deposit_event() = default;
 
 		// Deploy a term into the tuplespace
         //TODO eventually we should choose IDs pseudorandomly not take them
@@ -61,8 +61,8 @@ decl_module! {
 			let deployer = ensure_signed(origin)?;
 
 			match term {
-                Proc::Send(_) => <Sends<T>>::insert(id, &term),
-                Proc::Receive(_, _) => <Receives<T>>::insert(id, &term),
+                Proc::Send(_) => Sends::insert(id, &term),
+                Proc::Receive(_, _) => Receives::insert(id, &term),
                 Proc::Nil => (),
             }
 
@@ -76,19 +76,19 @@ decl_module! {
             let _ = ensure_signed(origin)?;
 
             // Ensure the specified send exists
-            ensure!(<Sends<T>>::exists(send), "No such send in the tuplespace to be commed");
+            ensure!(Sends::exists(send), "No such send in the tuplespace to be commed");
 
             // Ensure the specified receive exists
-            ensure!(<Receives<T>>::exists(receive), "No such receive in the tuplespace to be commed");
+            ensure!(Receives::exists(receive), "No such receive in the tuplespace to be commed");
 
             // Ensure they are on the same channel
-            if let (Proc::Send(send_chan), Proc::Receive(receive_chan, _)) = (<Sends<T>>::get(send), <Receives<T>>::get(receive)) {
+            if let (Proc::Send(send_chan), Proc::Receive(receive_chan, _)) = (Sends::get(send), Receives::get(receive)) {
                 ensure!(send_chan == receive_chan, "Send and receive must be on same channel");
             }
 
             // Consume both
-            <Sends<T>>::remove(send);
-            <Receives<T>>::remove(receive);
+            Sends::remove(send);
+            Receives::remove(receive);
 
             // TODO re-deploy the continuation
 

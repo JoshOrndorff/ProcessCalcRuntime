@@ -20,16 +20,10 @@ Install required tools:
 ./scripts/init.sh
 ```
 
-Build the WebAssembly binary:
+Build the code:
 
 ```bash
-./scripts/build.sh
-```
-
-Build all native code:
-
-```bash
-cargo build
+cargo build --release
 ```
 
 # Run
