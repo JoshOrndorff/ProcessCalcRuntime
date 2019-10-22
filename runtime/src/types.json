@@ -1,11 +1,11 @@
 {
-  "ProcId": "u32",
-  "Channel": "u32",
-  "Proc": {
-    "_enum": {
-      "Send": "Channel",
-      "Receive": "Channel",
-      "Nil": null
-    }
-  }
+	"ProcId": "u32",
+	"Channel": "u32",
+	"Proc": {
+		"_enum": {
+			"Send": "Channel",
+			"Receive": "Channel",
+			"Nil": null
+		}
+	}
 }

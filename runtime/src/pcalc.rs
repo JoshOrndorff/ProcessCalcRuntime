@@ -9,18 +9,18 @@ use codec::{ Encode, Decode };
 /// All the types of processes in our calculus
 #[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
 pub enum Proc {
-    //TODO I can't figure out how to tell PolkadotJS about this type
-    Send(Channel),
-    Receive(Channel, Box<Proc>),
-    Nil,
+	//TODO I can't figure out how to tell PolkadotJS about this type
+	Send(Channel),
+	Receive(Channel, Box<Proc>),
+	Nil,
 }
 
 // Need a default process because the sends and receives maps need
 // to return a value when queried at non existant ids
 impl Default for Proc {
-    fn default() -> Self {
-        Proc::Nil
-    }
+	fn default() -> Self {
+		Proc::Nil
+	}
 }
 
 //TODO add these to the configuration trait
@@ -39,10 +39,10 @@ pub trait Trait: system::Trait {
 decl_storage! {
 	trait Store for Module<T: Trait> as PCalc {
 		// How many sends are stored in the tuplespace
-        Sends get(sends): map ProcId => Proc;
+		Sends get(sends): map ProcId => Proc;
 
-        // How many receives are stored in the tuplespace
-        Receives get(receives): map ProcId => Proc;
+		// How many receives are stored in the tuplespace
+		Receives get(receives): map ProcId => Proc;
 	}
 }
 
@@ -54,61 +54,61 @@ decl_module! {
 		fn deposit_event() = default;
 
 		// Deploy a term into the tuplespace
-        //TODO eventually we should choose IDs pseudorandomly not take them
-        // from the user
+		//TODO eventually we should choose IDs pseudorandomly not take them
+		// from the user
 		pub fn deploy(origin, id: ProcId, term: Proc) -> Result {
 			// TODO: You only need this if you want to check it was signed.
 			let deployer = ensure_signed(origin)?;
 
 			match term {
-                Proc::Send(_) => Sends::insert(id, &term),
-                Proc::Receive(_, _) => Receives::insert(id, &term),
-                Proc::Nil => (),
-            }
+				Proc::Send(_) => Sends::insert(id, &term),
+				Proc::Receive(_, _) => Receives::insert(id, &term),
+				Proc::Nil => (),
+			}
 
-            Self::deposit_event(RawEvent::Deployed(deployer, id, term));
+			Self::deposit_event(RawEvent::Deployed(deployer, id, term));
 
 			Ok(())
 		}
 
-        pub fn comm(origin, send: ProcId, receive: ProcId) -> Result {
-            // Ensure the transaction was signed. (Might not be necessary)
-            let _ = ensure_signed(origin)?;
+		pub fn comm(origin, send: ProcId, receive: ProcId) -> Result {
+			// Ensure the transaction was signed. (Might not be necessary)
+			let _ = ensure_signed(origin)?;
 
-            // Ensure the specified send exists
-            ensure!(Sends::exists(send), "No such send in the tuplespace to be commed");
+			// Ensure the specified send exists
+			ensure!(Sends::exists(send), "No such send in the tuplespace to be commed");
 
-            // Ensure the specified receive exists
-            ensure!(Receives::exists(receive), "No such receive in the tuplespace to be commed");
+			// Ensure the specified receive exists
+			ensure!(Receives::exists(receive), "No such receive in the tuplespace to be commed");
 
-            // Ensure they are on the same channel
-            if let (Proc::Send(send_chan), Proc::Receive(receive_chan, _)) = (Sends::get(send), Receives::get(receive)) {
-                ensure!(send_chan == receive_chan, "Send and receive must be on same channel");
-            }
+			// Ensure they are on the same channel
+			if let (Proc::Send(send_chan), Proc::Receive(receive_chan, _)) = (Sends::get(send), Receives::get(receive)) {
+				ensure!(send_chan == receive_chan, "Send and receive must be on same channel");
+			}
 
-            // Consume both
-            Sends::remove(send);
-            Receives::remove(receive);
+			// Consume both
+			Sends::remove(send);
+			Receives::remove(receive);
 
-            // TODO re-deploy the continuation
+			// TODO re-deploy the continuation
 
-            // Emit the event
-            Self::deposit_event(RawEvent::Comm(send, receive));
+			// Emit the event
+			Self::deposit_event(RawEvent::Comm(send, receive));
 
-            Ok(())
-        }
+			Ok(())
+		}
 	}
 }
 
 decl_event!(
 	pub enum Event<T> where AccountId = <T as system::Trait>::AccountId {
-        //TODO I don't really care who deployed this, but I couldn't
-        // make the typechecker happy when I didn't use AccountId
+		//TODO I don't really care who deployed this, but I couldn't
+		// make the typechecker happy when I didn't use AccountId
 		// Event fires when any term is deployed to the tuplespace
 		Deployed(AccountId, ProcId, Proc),
 
-        // Send then Receive
-        Comm(ProcId, ProcId),
+		// Send then Receive
+		Comm(ProcId, ProcId),
 	}
 );
 
@@ -170,73 +170,73 @@ mod tests {
 		});
 	}
 
-    #[test]
-    fn deploying_a_receive_works() {
-        with_externalities(&mut new_test_ext(), || {
-            // Deploy a single receive by user 1 with id 1 over channel 1
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Receive(1, Box::new(Proc::Nil))));
-            // Assert that the receive is in the tuplespace
-            assert_eq!(<Receives<Test>>::get(1), Proc::Receive(1, Box::new(Proc::Nil)));
-        });
-    }
+	#[test]
+	fn deploying_a_receive_works() {
+		with_externalities(&mut new_test_ext(), || {
+			// Deploy a single receive by user 1 with id 1 over channel 1
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Receive(1, Box::new(Proc::Nil))));
+			// Assert that the receive is in the tuplespace
+			assert_eq!(<Receives<Test>>::get(1), Proc::Receive(1, Box::new(Proc::Nil)));
+		});
+	}
 
-    #[test]
-    fn comm_over_same_channel_works() {
-        with_externalities(&mut new_test_ext(), || {
-            // Deploy send (id 1) and receive (id 2)
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(1, Box::new(Proc::Nil))));
+	#[test]
+	fn comm_over_same_channel_works() {
+		with_externalities(&mut new_test_ext(), || {
+			// Deploy send (id 1) and receive (id 2)
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(1, Box::new(Proc::Nil))));
 
-            // Run the comm event
-            assert_ok!(ProcessCalc::comm(Origin::signed(1), 1, 2));
+			// Run the comm event
+			assert_ok!(ProcessCalc::comm(Origin::signed(1), 1, 2));
 
-            // Assert both were consumed
-            assert!(!<Sends<Test>>::exists(1));
-            assert!(!<Receives<Test>>::exists(2));
-        });
-    }
+			// Assert both were consumed
+			assert!(!<Sends<Test>>::exists(1));
+			assert!(!<Receives<Test>>::exists(2));
+		});
+	}
 
-    #[test]
-    fn comm_over_different_channels_fails() {
-        with_externalities(&mut new_test_ext(), || {
-            // Deploy send (chan 1) and receive (chan 2)
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
+	#[test]
+	fn comm_over_different_channels_fails() {
+		with_externalities(&mut new_test_ext(), || {
+			// Deploy send (chan 1) and receive (chan 2)
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
 
-            // Assert that the comm event fails
-            assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "Send and receive must be on same channel");
+			// Assert that the comm event fails
+			assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "Send and receive must be on same channel");
 
-            // Assert neither were consumed
-            assert!(<Sends<Test>>::exists(1));
-            assert!(<Receives<Test>>::exists(2));
-        });
-    }
+			// Assert neither were consumed
+			assert!(<Sends<Test>>::exists(1));
+			assert!(<Receives<Test>>::exists(2));
+		});
+	}
 
-    #[test]
-    fn comm_with_missing_receive_fails() {
-        with_externalities(&mut new_test_ext(), || {
-            // Deploy send (id 1) but no receive
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+	#[test]
+	fn comm_with_missing_receive_fails() {
+		with_externalities(&mut new_test_ext(), || {
+			// Deploy send (id 1) but no receive
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
 
-            // Assert that the comm event fails
-            assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such receive in the tuplespace to be commed");
+			// Assert that the comm event fails
+			assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such receive in the tuplespace to be commed");
 
-            // Assert send not consumed
-            assert!(<Sends<Test>>::exists(1));
-        });
-    }
+			// Assert send not consumed
+			assert!(<Sends<Test>>::exists(1));
+		});
+	}
 
-    #[test]
-    fn comm_with_missing_send_fails() {
-        with_externalities(&mut new_test_ext(), || {
-            // Deploy receive (id 2) but no send
-            assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
+	#[test]
+	fn comm_with_missing_send_fails() {
+		with_externalities(&mut new_test_ext(), || {
+			// Deploy receive (id 2) but no send
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
 
-            // Assert that the comm event fails
-            assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such send in the tuplespace to be commed");
+			// Assert that the comm event fails
+			assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such send in the tuplespace to be commed");
 
-            // Assert receive not consumed
-            assert!(<Receives<Test>>::exists(2));
-        });
-    }
+			// Assert receive not consumed
+			assert!(<Receives<Test>>::exists(2));
+		});
+	}
 }
