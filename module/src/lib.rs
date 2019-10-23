@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "std"), no_std)]
+
 /// A runtime module that interprets a sipmlified pi calculus
 
 

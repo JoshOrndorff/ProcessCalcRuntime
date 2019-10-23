@@ -1,0 +1,55 @@
+[package]
+name = "pcalc-module"
+version = "0.1.0"
+authors = ["Joshy Orndorff"]
+edition = "2018"
+
+[features]
+default = ['std']
+std = [
+    'serde',
+    'codec/std',
+    'support/std',
+    'system/std',
+    'sr-primitives/std',
+    'rstd/std',
+]
+
+[dependencies.serde]
+version = "1.0"
+optional = true
+
+[dependencies.codec]
+default-features = false
+features = ['derive']
+package = 'parity-scale-codec'
+version = '1.0.0'
+
+[dependencies.support]
+default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'srml-support'
+rev = 'd1cd01c74e8d5550396cb654f9a3f1b641efdf4c'
+
+[dependencies.system]
+default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'srml-system'
+rev = 'd1cd01c74e8d5550396cb654f9a3f1b641efdf4c'
+
+[dependencies.sr-primitives]
+default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'sr-primitives'
+rev = 'd1cd01c74e8d5550396cb654f9a3f1b641efdf4c'
+
+[dev-dependencies.primitives]
+git = 'https://github.com/paritytech/substrate.git'
+package = 'substrate-primitives'
+rev = 'd1cd01c74e8d5550396cb654f9a3f1b641efdf4c'
+
+[dependencies.rstd]
+default_features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'sr-std'
+rev = 'd1cd01c74e8d5550396cb654f9a3f1b641efdf4c'

@@ -33,7 +33,14 @@ std = [
     'safe-mix/std',
     'offchain-primitives/std',
     'substrate-session/std',
+    'pcalc/std'
 ]
+
+[dependencies.pcalc]
+package = "pcalc-module"
+default_features = false
+path = "../module"
+
 [dependencies.aura]
 default_features = false
 git = 'https://github.com/paritytech/substrate.git'
