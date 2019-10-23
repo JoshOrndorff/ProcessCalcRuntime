@@ -211,12 +211,11 @@ mod tests {
 		new_test_ext().execute_with(|| {
 			let id1: H256 = H256::from_low_u64_le(1);
 			let id2: H256 = H256::from_low_u64_le(2);
-			// For comfirming comm executed
-			//let commed_id = (id1, id2).using_encoded(Blake2Hasher::hash);
+			let commed_id = (id1, id2).using_encoded(Blake2Hasher::hash);
 
 			// Deploy send (id 1) and receive (id 2)
 			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id1, Proc::Send(1)));
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id2, Proc::Receive(1, Box::new(Proc::Nil))));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id2, Proc::Receive(1, Box::new(Proc::Send(2)))));
 
 			// Run the comm event
 			assert_ok!(ProcessCalc::comm(Origin::signed(1), id1, id2));
@@ -224,6 +223,9 @@ mod tests {
 			// Assert both were consumed
 			assert!(!<Sends<Test>>::exists(id1));
 			assert!(!<Receives<Test>>::exists(id2));
+
+			// Assert new term exists at expected id
+			assert_eq!(<Sends<Test>>::get(commed_id), Proc::Send(2));
 		});
 	}
 
