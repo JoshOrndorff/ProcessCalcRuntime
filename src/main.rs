@@ -16,8 +16,8 @@ fn main() {
 		commit: env!("VERGEN_SHA_SHORT"),
 		version: env!("CARGO_PKG_VERSION"),
 		executable_name: "pcalc",
-		author: "CoLab",
-		description: "pcalc",
+		author: "Joshy Orndorff",
+		description: "Blockchain Node including the Pcalc Runtime Module",
 		support_url: "support.anonymous.an",
 	};
 

@@ -3,16 +3,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 use substrate_client::LongestChain;
-use babe::{import_queue, start_babe, Config};
-use grandpa::{self, FinalityProofProvider as GrandpaFinalityProofProvider};
 use futures::prelude::*;
 use pcalc_runtime::{self, GenesisConfig, opaque::Block, RuntimeApi};
 use substrate_service::{error::{Error as ServiceError}, AbstractService, Configuration, ServiceBuilder};
 use transaction_pool::{self, txpool::{Pool as TransactionPool}};
 use inherents::InherentDataProviders;
-use network::construct_simple_protocol;
+use network::{construct_simple_protocol};
 use substrate_executor::native_executor_instance;
 pub use substrate_executor::NativeExecutor;
+use aura_primitives::sr25519::{AuthorityPair as AuraPair};
+use grandpa::{self, FinalityProofProvider as GrandpaFinalityProofProvider};
 
 // Our native executor instance.
 native_executor_instance!(
@@ -34,7 +34,6 @@ macro_rules! new_full_start {
 	($config:expr) => {{
 		let mut import_setup = None;
 		let inherent_data_providers = inherents::InherentDataProviders::new();
-		let mut tasks_to_spawn = None;
 
 		let builder = substrate_service::ServiceBuilder::new_full::<
 			pcalc_runtime::opaque::Block, pcalc_runtime::RuntimeApi, crate::service::Executor
@@ -43,35 +42,33 @@ macro_rules! new_full_start {
 				Ok(substrate_client::LongestChain::new(backend.clone()))
 			})?
 			.with_transaction_pool(|config, client|
-				Ok(transaction_pool::txpool::Pool::new(config, transaction_pool::ChainApi::new(client)))
+				Ok(transaction_pool::txpool::Pool::new(config, transaction_pool::FullChainApi::new(client)))
 			)?
 			.with_import_queue(|_config, client, mut select_chain, transaction_pool| {
 				let select_chain = select_chain.take()
 					.ok_or_else(|| substrate_service::Error::SelectChainRequired)?;
-				let (block_import, link_half) =
-					grandpa::block_import::<_, _, _, pcalc_runtime::RuntimeApi, _, _>(
-						client.clone(), client.clone(), select_chain
-					)?;
-				let justification_import = block_import.clone();
 
-				let (import_queue, babe_link, babe_block_import, pruning_task) = babe::import_queue(
-					babe::Config::get_or_compute(&*client)?,
-					block_import,
-					Some(Box::new(justification_import)),
+				let (grandpa_block_import, grandpa_link) =
+					grandpa::block_import::<_, _, _, pcalc_runtime::RuntimeApi, _, _>(
+						client.clone(), &*client, select_chain
+					)?;
+
+				let import_queue = aura::import_queue::<_, _, AuraPair, _>(
+					aura::SlotDuration::get_or_compute(&*client)?,
+					Box::new(grandpa_block_import.clone()),
+					Some(Box::new(grandpa_block_import.clone())),
 					None,
-					client.clone(),
 					client,
 					inherent_data_providers.clone(),
-					Some(transaction_pool)
+					Some(transaction_pool),
 				)?;
 
-				import_setup = Some((babe_block_import.clone(), link_half, babe_link));
-				tasks_to_spawn = Some(vec![Box::new(pruning_task)]);
+				import_setup = Some((grandpa_block_import, grandpa_link));
 
 				Ok(import_queue)
 			})?;
 
-		(builder, import_setup, inherent_data_providers, tasks_to_spawn)
+		(builder, import_setup, inherent_data_providers)
 	}}
 }
 
@@ -79,34 +76,22 @@ macro_rules! new_full_start {
 pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisConfig>)
 	-> Result<impl AbstractService, ServiceError>
 {
-
 	let is_authority = config.roles.is_authority();
+	let force_authoring = config.force_authoring;
 	let name = config.name.clone();
 	let disable_grandpa = config.disable_grandpa;
-	let force_authoring = config.force_authoring;
 
-	let (builder, mut import_setup, inherent_data_providers, mut tasks_to_spawn) = new_full_start!(config);
+	let (builder, mut import_setup, inherent_data_providers) = new_full_start!(config);
+
+	let (block_import, grandpa_link) =
+		import_setup.take()
+			.expect("Link Half and Block Import are present for Full Services or setup failed before. qed");
 
 	let service = builder.with_network_protocol(|_| Ok(NodeProtocol::new()))?
 		.with_finality_proof_provider(|client, backend|
 			Ok(Arc::new(GrandpaFinalityProofProvider::new(backend, client)) as _)
 		)?
 		.build()?;
-
-	let (block_import, link_half, babe_link) =
-		import_setup.take()
-			.expect("Link Half and Block Import are present for Full Services or setup failed before. qed");
-
-	// spawn any futures that were created in the previous setup steps
-	if let Some(tasks) = tasks_to_spawn.take() {
-		for task in tasks {
-			service.spawn_task(
-				task.select(service.on_exit())
-					.map(|_| ())
-					.map_err(|_| ())
-			);
-		}
-	}
 
 	if is_authority {
 		let proposer = basic_authorship::ProposerFactory {
@@ -118,23 +103,21 @@ pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisCon
 		let select_chain = service.select_chain()
 			.ok_or(ServiceError::SelectChainRequired)?;
 
-		let babe_config = babe::BabeParams {
-			config: Config::get_or_compute(&*client)?,
-			keystore: service.keystore(),
+		let aura = aura::start_aura::<_, _, _, _, _, AuraPair, _, _, _>(
+			aura::SlotDuration::get_or_compute(&*client)?,
 			client,
 			select_chain,
 			block_import,
-			env: proposer,
-			sync_oracle: service.network(),
-			inherent_data_providers: inherent_data_providers.clone(),
-			force_authoring: force_authoring,
-			time_source: babe_link,
-		};
+			proposer,
+			service.network(),
+			inherent_data_providers.clone(),
+			force_authoring,
+			service.keystore(),
+		)?;
 
-		let babe = start_babe(babe_config)?;
-		let select = babe.select(service.on_exit()).then(|_| Ok(()));
+		let select = aura.select(service.on_exit()).then(|_| Ok(()));
 
-		// the BABE authoring task is considered infallible, i.e. if it
+		// the AURA authoring task is considered essential, i.e. if it
 		// fails we take down the service with it.
 		service.spawn_essential_task(select);
 	}
@@ -142,7 +125,7 @@ pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisCon
 	let grandpa_config = grandpa::Config {
 		// FIXME #1578 make this available through chainspec
 		gossip_duration: Duration::from_millis(333),
-		justification_period: 4096,
+		justification_period: 512,
 		name: Some(name),
 		keystore: Some(service.keystore()),
 	};
@@ -152,7 +135,7 @@ pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisCon
 			// start the lightweight GRANDPA observer
 			service.spawn_task(Box::new(grandpa::run_grandpa_observer(
 				grandpa_config,
-				link_half,
+				grandpa_link,
 				service.network(),
 				service.on_exit(),
 			)?));
@@ -161,11 +144,12 @@ pub fn new_full<C: Send + Default + 'static>(config: Configuration<C, GenesisCon
 			// start the full GRANDPA voter
 			let voter_config = grandpa::GrandpaParams {
 				config: grandpa_config,
-				link: link_half,
+				link: grandpa_link,
 				network: service.network(),
 				inherent_data_providers: inherent_data_providers.clone(),
 				on_exit: service.on_exit(),
 				telemetry_on_connect: Some(service.telemetry_on_connect_stream()),
+				voting_rule: grandpa::VotingRulesBuilder::default().build(),
 			};
 
 			// the GRANDPA voter task is considered infallible, i.e.
@@ -195,30 +179,27 @@ pub fn new_light<C: Send + Default + 'static>(config: Configuration<C, GenesisCo
 			Ok(LongestChain::new(backend.clone()))
 		})?
 		.with_transaction_pool(|config, client|
-			Ok(TransactionPool::new(config, transaction_pool::ChainApi::new(client)))
+			Ok(TransactionPool::new(config, transaction_pool::FullChainApi::new(client)))
 		)?
-		.with_import_queue_and_fprb(|_config, client, backend, fetcher, _select_chain, transaction_pool| {
+		.with_import_queue_and_fprb(|_config, client, backend, fetcher, _select_chain, _tx_pool| {
 			let fetch_checker = fetcher
 				.map(|fetcher| fetcher.checker().clone())
 				.ok_or_else(|| "Trying to start light import queue without active fetch checker")?;
-			let block_import = grandpa::light_block_import::<_, _, _, RuntimeApi, _>(
+			let grandpa_block_import = grandpa::light_block_import::<_, _, _, RuntimeApi, _>(
 				client.clone(), backend, Arc::new(fetch_checker), client.clone()
 			)?;
-
-			let finality_proof_import = block_import.clone();
+			let finality_proof_import = grandpa_block_import.clone();
 			let finality_proof_request_builder =
 				finality_proof_import.create_finality_proof_request_builder();
 
-			// FIXME: pruning task isn't started since light client doesn't do `AuthoritySetup`.
-			let (import_queue, ..) = import_queue(
-				Config::get_or_compute(&*client)?,
-				block_import,
+			let import_queue = aura::import_queue::<_, _, AuraPair, ()>(
+				aura::SlotDuration::get_or_compute(&*client)?,
+				Box::new(grandpa_block_import),
 				None,
 				Some(Box::new(finality_proof_import)),
-				client.clone(),
 				client,
 				inherent_data_providers.clone(),
-				Some(transaction_pool)
+				None,
 			)?;
 
 			Ok((import_queue, finality_proof_request_builder))
