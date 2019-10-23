@@ -5,11 +5,11 @@ use support::{decl_module, decl_storage, decl_event, StorageMap, dispatch::Resul
 use system::ensure_signed;
 use rstd::boxed::Box;
 use codec::{ Encode, Decode };
+use sr_primitives::traits::Hash;
 
 /// All the types of processes in our calculus
 #[derive(PartialEq, Eq, Clone, Encode, Decode, Debug)]
 pub enum Proc {
-	//TODO I can't figure out how to tell PolkadotJS about this type
 	Send(Channel),
 	Receive(Channel, Box<Proc>),
 	Nil,
@@ -23,8 +23,14 @@ impl Default for Proc {
 	}
 }
 
-//TODO add these to the configuration trait
-type ProcId = u32;
+// Process ids to be commed together
+#[derive(PartialEq, Eq, Clone, Encode, Decode, Debug, Hash)]
+pub struct Comm<T> where T: system::Trait {
+	send: ProcId<T>,
+	receive: ProcId<T>,
+}
+
+type ProcId<T> = <T as system::Trait>::Hash;
 type Channel = u32;
 
 /// The module's configuration trait.
@@ -39,16 +45,18 @@ pub trait Trait: system::Trait {
 decl_storage! {
 	trait Store for Module<T: Trait> as PCalc {
 		// How many sends are stored in the tuplespace
-		Sends get(sends): map ProcId => Proc;
+		Sends get(sends): map ProcId<T> => Proc;
 
 		// How many receives are stored in the tuplespace
-		Receives get(receives): map ProcId => Proc;
+		Receives get(receives): map ProcId<T> => Proc;
 	}
 }
 
 decl_module! {
 	/// The module declaration.
-	pub struct Module<T: Trait> for enum Call where origin: T::Origin {
+	pub struct Module<T: Trait> for enum Call where
+		origin: T::Origin
+	{
 		// Initializing events
 		// this is needed only if you are using events in your module
 		fn deposit_event() = default;
@@ -56,56 +64,67 @@ decl_module! {
 		// Deploy a term into the tuplespace
 		//TODO eventually we should choose IDs pseudorandomly not take them
 		// from the user
-		pub fn deploy(origin, id: ProcId, term: Proc) -> Result {
+		pub fn deploy(origin, id: ProcId<T>, term: Proc) -> Result {
 			// TODO: You only need this if you want to check it was signed.
 			let deployer = ensure_signed(origin)?;
 
-			match term {
-				Proc::Send(_) => Sends::insert(id, &term),
-				Proc::Receive(_, _) => Receives::insert(id, &term),
-				Proc::Nil => (),
-			}
+			Self::par_in(&term, id);
 
 			Self::deposit_event(RawEvent::Deployed(deployer, id, term));
 
 			Ok(())
 		}
 
-		pub fn comm(origin, send: ProcId, receive: ProcId) -> Result {
+		pub fn comm(origin, c: Comm<T>) -> Result {
 			// Ensure the transaction was signed. (Might not be necessary)
 			let _ = ensure_signed(origin)?;
+			let send_id = c.send;
+			let receive_id = c.receive;
 
 			// Ensure the specified send exists
-			ensure!(Sends::exists(send), "No such send in the tuplespace to be commed");
+			ensure!(Sends::exists(send_id), "No such send in the tuplespace to be commed");
 
 			// Ensure the specified receive exists
-			ensure!(Receives::exists(receive), "No such receive in the tuplespace to be commed");
+			ensure!(Receives::exists(receive_id), "No such receive in the tuplespace to be commed");
 
 			// Ensure they are on the same channel
-			if let (Proc::Send(send_chan), Proc::Receive(receive_chan, _)) = (Sends::get(send), Receives::get(receive)) {
+			if let (Proc::Send(send_chan), Proc::Receive(receive_chan, continuation)) = (Sends::get(send_id), Receives::get(receive_id)) {
 				ensure!(send_chan == receive_chan, "Send and receive must be on same channel");
+
+				// Re-deploy the continuation
+				let new_id = <T as system::Trait>::Hashing::hash_of(&c);
+				Self::par_in(&continuation, new_id);
 			}
 
 			// Consume both
-			Sends::remove(send);
-			Receives::remove(receive);
-
-			// TODO re-deploy the continuation
+			Sends::remove(send_id);
+			Receives::remove(receive_id);
 
 			// Emit the event
-			Self::deposit_event(RawEvent::Comm(send, receive));
+			Self::deposit_event(RawEvent::Comm(send_id, receive_id));
 
 			Ok(())
 		}
 	}
 }
 
+impl<T: Trait> Module<T> {
+	/// Pars the given term into the tuplespace at the given id
+	fn par_in(term: &Proc, id: ProcId<T>) {
+		match term {
+			Proc::Send(_) => Sends::insert(id, term),
+			Proc::Receive(_, _) => Receives::insert(id, term),
+			Proc::Nil => (),
+			// Recursive calls like par and new will go here.
+			// When we have pars, we'll increment the id for each child.
+		}
+	}
+}
+
 decl_event!(
-	pub enum Event<T> where AccountId = <T as system::Trait>::AccountId {
-		//TODO I don't really care who deployed this, but I couldn't
-		// make the typechecker happy when I didn't use AccountId
-		// Event fires when any term is deployed to the tuplespace
-		Deployed(AccountId, ProcId, Proc),
+	pub enum Event<T> where ProcId = <T as system::Trait>::Hash {
+		//TODO Why did I have to re-declare ProcId here?
+		Deployed(ProcId, Proc),
 
 		// Send then Receive
 		Comm(ProcId, ProcId),
