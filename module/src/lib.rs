@@ -130,13 +130,13 @@ decl_event!(
 mod tests {
 	use super::*;
 
-	use runtime_io::with_externalities;
-	use primitives::{H256, Blake2Hasher};
-	use support::{impl_outer_origin, assert_ok, assert_noop};
-	use runtime_primitives::{
-		BuildStorage,
+	use primitives::{H256, Blake2Hasher, Hasher};
+	use support::{impl_outer_origin, assert_ok, assert_noop, parameter_types};
+	use sr_primitives::{
 		traits::{BlakeTwo256, IdentityLookup},
-		testing::{Digest, DigestItem, Header}
+		testing::Header,
+		weights::Weight,
+		Perbill,
 	};
 
 	impl_outer_origin! {
@@ -148,18 +148,28 @@ mod tests {
 	// configuration traits of modules we want to use.
 	#[derive(Clone, Eq, PartialEq)]
 	pub struct Test;
+	parameter_types! {
+		pub const BlockHashCount: u64 = 250;
+		pub const MaximumBlockWeight: Weight = 1024;
+		pub const MaximumBlockLength: u32 = 2 * 1024;
+		pub const AvailableBlockRatio: Perbill = Perbill::from_percent(75);
+	}
 	impl system::Trait for Test {
 		type Origin = Origin;
+		type Call = ();
 		type Index = u64;
 		type BlockNumber = u64;
 		type Hash = H256;
 		type Hashing = BlakeTwo256;
-		type Digest = Digest;
 		type AccountId = u64;
 		type Lookup = IdentityLookup<Self::AccountId>;
 		type Header = Header;
 		type Event = ();
-		type Log = DigestItem;
+		type BlockHashCount = BlockHashCount;
+		type MaximumBlockWeight = MaximumBlockWeight;
+		type MaximumBlockLength = MaximumBlockLength;
+		type AvailableBlockRatio = AvailableBlockRatio;
+		type Version = ();
 	}
 	impl Trait for Test {
 		type Event = ();
@@ -168,87 +178,105 @@ mod tests {
 
 	// This function basically just builds a genesis storage key/value store according to
 	// our desired mockup.
-	fn new_test_ext() -> runtime_io::TestExternalities<Blake2Hasher> {
-		system::GenesisConfig::<Test>::default().build_storage().unwrap().0.into()
+	fn new_test_ext() -> runtime_io::TestExternalities {
+		system::GenesisConfig::default().build_storage::<Test>().unwrap().into()
 	}
 
 	#[test]
 	fn deploying_a_send_works() {
-		with_externalities(&mut new_test_ext(), || {
+		new_test_ext().execute_with(|| {
+			let id: H256 = H256::from_low_u64_le(1);
+
 			// Deploy a single send by user 1 with id 1 over channel 1
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id, Proc::Send(1)));
 			// Assert that the send is in the tuplespace
-			assert_eq!(<Sends<Test>>::get(1), Proc::Send(1));
+			assert_eq!(<Sends<Test>>::get(id), Proc::Send(1));
 		});
 	}
 
 	#[test]
 	fn deploying_a_receive_works() {
-		with_externalities(&mut new_test_ext(), || {
+		new_test_ext().execute_with(|| {
+			let id: H256 = H256::from_low_u64_le(1);
+
 			// Deploy a single receive by user 1 with id 1 over channel 1
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Receive(1, Box::new(Proc::Nil))));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id, Proc::Receive(1, Box::new(Proc::Nil))));
 			// Assert that the receive is in the tuplespace
-			assert_eq!(<Receives<Test>>::get(1), Proc::Receive(1, Box::new(Proc::Nil)));
+			assert_eq!(<Receives<Test>>::get(id), Proc::Receive(1, Box::new(Proc::Nil)));
 		});
 	}
 
 	#[test]
 	fn comm_over_same_channel_works() {
-		with_externalities(&mut new_test_ext(), || {
+		new_test_ext().execute_with(|| {
+			let id1: H256 = H256::from_low_u64_le(1);
+			let id2: H256 = H256::from_low_u64_le(2);
+			// For comfirming comm executed
+			//let commed_id = (id1, id2).using_encoded(Blake2Hasher::hash);
+
 			// Deploy send (id 1) and receive (id 2)
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(1, Box::new(Proc::Nil))));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id1, Proc::Send(1)));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id2, Proc::Receive(1, Box::new(Proc::Nil))));
 
 			// Run the comm event
-			assert_ok!(ProcessCalc::comm(Origin::signed(1), 1, 2));
+			assert_ok!(ProcessCalc::comm(Origin::signed(1), id1, id2));
 
 			// Assert both were consumed
-			assert!(!<Sends<Test>>::exists(1));
-			assert!(!<Receives<Test>>::exists(2));
+			assert!(!<Sends<Test>>::exists(id1));
+			assert!(!<Receives<Test>>::exists(id2));
 		});
 	}
 
 	#[test]
 	fn comm_over_different_channels_fails() {
-		with_externalities(&mut new_test_ext(), || {
+		new_test_ext().execute_with(|| {
+			let id1: H256 = H256::from_low_u64_le(1);
+			let id2: H256 = H256::from_low_u64_le(2);
+
 			// Deploy send (chan 1) and receive (chan 2)
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id1, Proc::Send(1)));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id2, Proc::Receive(2, Box::new(Proc::Nil))));
 
 			// Assert that the comm event fails
-			assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "Send and receive must be on same channel");
+			assert_noop!(ProcessCalc::comm(Origin::signed(1), id1, id2), "Send and receive must be on same channel");
 
 			// Assert neither were consumed
-			assert!(<Sends<Test>>::exists(1));
-			assert!(<Receives<Test>>::exists(2));
+			assert!(<Sends<Test>>::exists(id1));
+			assert!(<Receives<Test>>::exists(id2));
 		});
 	}
 
 	#[test]
 	fn comm_with_missing_receive_fails() {
-		with_externalities(&mut new_test_ext(), || {
+		new_test_ext().execute_with(|| {
+			let id1: H256 = H256::from_low_u64_le(1);
+			let id2: H256 = H256::from_low_u64_le(2);
+
 			// Deploy send (id 1) but no receive
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 1, Proc::Send(1)));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id1, Proc::Send(1)));
 
 			// Assert that the comm event fails
-			assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such receive in the tuplespace to be commed");
+			assert_noop!(ProcessCalc::comm(Origin::signed(1), id1, id2), "No such receive in the tuplespace to be commed");
 
 			// Assert send not consumed
-			assert!(<Sends<Test>>::exists(1));
+			assert!(<Sends<Test>>::exists(id1));
 		});
 	}
 
 	#[test]
 	fn comm_with_missing_send_fails() {
-		with_externalities(&mut new_test_ext(), || {
+		new_test_ext().execute_with(|| {
+			let id1: H256 = H256::from_low_u64_le(1);
+			let id2: H256 = H256::from_low_u64_le(2);
+
 			// Deploy receive (id 2) but no send
-			assert_ok!(ProcessCalc::deploy(Origin::signed(1), 2, Proc::Receive(2, Box::new(Proc::Nil))));
+			assert_ok!(ProcessCalc::deploy(Origin::signed(1), id2, Proc::Receive(2, Box::new(Proc::Nil))));
 
 			// Assert that the comm event fails
-			assert_noop!(ProcessCalc::comm(Origin::signed(1), 1, 2), "No such send in the tuplespace to be commed");
+			assert_noop!(ProcessCalc::comm(Origin::signed(1), id1, id2), "No such send in the tuplespace to be commed");
 
 			// Assert receive not consumed
-			assert!(<Receives<Test>>::exists(2));
+			assert!(<Receives<Test>>::exists(id2));
 		});
 	}
 }
