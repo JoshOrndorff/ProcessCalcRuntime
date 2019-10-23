@@ -23,13 +23,6 @@ impl Default for Proc {
 	}
 }
 
-// Process ids to be commed together
-#[derive(PartialEq, Eq, Clone, Encode, Decode, Debug, Hash)]
-pub struct Comm<T> where T: system::Trait {
-	send: ProcId<T>,
-	receive: ProcId<T>,
-}
-
 type ProcId<T> = <T as system::Trait>::Hash;
 type Channel = u32;
 
@@ -65,40 +58,38 @@ decl_module! {
 		//TODO eventually we should choose IDs pseudorandomly not take them
 		// from the user
 		pub fn deploy(origin, id: ProcId<T>, term: Proc) -> Result {
-			// TODO: You only need this if you want to check it was signed.
-			let deployer = ensure_signed(origin)?;
+			// Deployer will be used to unlock unforgeables from locker room.
+			let _deployer = ensure_signed(origin)?;
 
 			Self::par_in(&term, id);
 
-			Self::deposit_event(RawEvent::Deployed(deployer, id, term));
+			Self::deposit_event(RawEvent::Deployed(id, term));
 
 			Ok(())
 		}
 
-		pub fn comm(origin, c: Comm<T>) -> Result {
+		pub fn comm(origin, send_id: ProcId<T>, receive_id: ProcId<T>) -> Result {
 			// Ensure the transaction was signed. (Might not be necessary)
 			let _ = ensure_signed(origin)?;
-			let send_id = c.send;
-			let receive_id = c.receive;
 
 			// Ensure the specified send exists
-			ensure!(Sends::exists(send_id), "No such send in the tuplespace to be commed");
+			ensure!(<Sends<T>>::exists(send_id), "No such send in the tuplespace to be commed");
 
 			// Ensure the specified receive exists
-			ensure!(Receives::exists(receive_id), "No such receive in the tuplespace to be commed");
+			ensure!(<Receives<T>>::exists(receive_id), "No such receive in the tuplespace to be commed");
 
-			// Ensure they are on the same channel
-			if let (Proc::Send(send_chan), Proc::Receive(receive_chan, continuation)) = (Sends::get(send_id), Receives::get(receive_id)) {
+			if let (Proc::Send(send_chan), Proc::Receive(receive_chan, continuation)) = (<Sends<T>>::get(send_id), <Receives<T>>::get(receive_id)) {
+				// Ensure they are on the same channel
 				ensure!(send_chan == receive_chan, "Send and receive must be on same channel");
 
 				// Re-deploy the continuation
-				let new_id = <T as system::Trait>::Hashing::hash_of(&c);
+				let new_id = (send_id, receive_id).using_encoded(<T as system::Trait>::Hashing::hash);
 				Self::par_in(&continuation, new_id);
 			}
 
 			// Consume both
-			Sends::remove(send_id);
-			Receives::remove(receive_id);
+			<Sends<T>>::remove(send_id);
+			<Receives<T>>::remove(receive_id);
 
 			// Emit the event
 			Self::deposit_event(RawEvent::Comm(send_id, receive_id));
@@ -112,8 +103,8 @@ impl<T: Trait> Module<T> {
 	/// Pars the given term into the tuplespace at the given id
 	fn par_in(term: &Proc, id: ProcId<T>) {
 		match term {
-			Proc::Send(_) => Sends::insert(id, term),
-			Proc::Receive(_, _) => Receives::insert(id, term),
+			Proc::Send(_) => <Sends<T>>::insert(id, term),
+			Proc::Receive(_, _) => <Receives<T>>::insert(id, term),
 			Proc::Nil => (),
 			// Recursive calls like par and new will go here.
 			// When we have pars, we'll increment the id for each child.
